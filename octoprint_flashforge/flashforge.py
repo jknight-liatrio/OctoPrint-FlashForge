@@ -8,7 +8,15 @@ except ImportError:
 	import Queue as queue
 
 
-regex_SDPrintProgress = re.compile("(?P<current>[0-9]+)/(?P<total>[0-9]+)")
+regex_position = re.compile(b"X:(?P<X>-?[\d.]+) Y:(?P<Y>-?[\d.]+) Z:(?P<Z>-?[\d.]+) E0:(?P<E0>-?[\d.]+)( E1:(?P<E1>-?[\d.]+))?")
+"""
+Regex matching SD print progress from M27.
+"""
+regex_g1 = re.compile(b"G1(?=.* X(?P<X>-?[\d.]+))?(?=.* Y(?P<Y>-?[\d.]+))?(?=.* Z(?P<Z>-?[\d.]+))?(?=.* E(?P<E>-?[\d.]+))?(?=.* F(?P<F>[\d.]+))?")
+"""
+Regex matching SD print progress from M27.
+"""
+regex_SDPrintProgress = re.compile(b"(?P<current>\d+)/(?P<total>\d+)")
 """
 Regex matching SD print progress from M27.
 """
@@ -47,6 +55,9 @@ class FlashForge(object):
 		self._readlock = threading.Lock()
 		self._writelock = threading.Lock()
 		self._printerstate = self.STATE_UNKNOWN
+		self._relative_pos = False
+		self._pos = {"X": 0.0, "Y": 0.0, "Z": 0.0, "E": 0.0, "T0": 0.0, "T1": 0.0}
+		self._extruder = "E0"
 
 		self._context = usb1.USBContext()
 		self._usb_cmd_endpoint_in = 0
@@ -204,8 +215,43 @@ class FlashForge(object):
 		data = data.strip(b" \r\n")
 		# try to filter out garbage commands (we need to replace with something harmless)
 		# do this here instead of octoprint.comm.protocol.gcode.sending hook so DisplayLayerProgress plugin will work
-		if len(data) and not self._plugin.valid_command(data):
-			data = b"M119"
+		if len(data):
+			if not self._plugin.valid_command(data):
+				self._logger.debug("dropping {}".format(data))
+				data = b"M119"
+			else:
+				cmd = data.split(b' ', 1)
+				payload = b"" if len(cmd) == 1 else cmd[1]
+				gcode = cmd[0]
+
+				if gcode == b"G1":
+					if self._relative_pos:
+						# try to convert relative positioning to absolute
+						self._logger.debug("G1 with rel pos")
+						match = regex_g1.search(data)
+						if match:
+							self._logger.debug("G1 {0}".format(match.groupdict()))
+							data = b"G1"
+							for k in match.groupdict():
+								if match[k] != None:
+									if k in ['X', 'Y', 'Z']:
+										v = self._pos[k] + float(match[k])
+										data += b" %s%06.4f" % (k.encode(), v)
+									elif k == 'E':
+										self._logger.debug("extruder {}, {}".format(self._extruder, self._pos[self._extruder]))
+										v = self._pos[self._extruder] + float(match[k])
+										data += b" %s%06.4f" % (k.encode(), v)
+									else:
+										v = int(match[k])
+										data += b" %s%d" % (k.encode(), v)
+				elif gcode == b"G90":
+					self._relative_pos = False
+				elif gcode == b"G91":
+					self._relative_pos = True
+					data = b"G90"
+				elif gcode == b"M108":
+					self._extruder = "E1" if b"T1" in payload else "E0"
+					self._logger.debug("select extruder {0}".format(self._extruder))
 
 		try:
 			self._logger.debug("FlashForge.write() {0}".format(data.decode()))
@@ -258,7 +304,7 @@ class FlashForge(object):
 			if b"CMD M27 " in data:
 				# need to filter out bogus SD print progress from cancelled or paused prints
 				if b"printing byte" in data and self._printerstate in [self.STATE_READY, self.STATE_SD_PAUSED]:
-					match = regex_SDPrintProgress.search(data.decode())
+					match = regex_SDPrintProgress.search(data)
 					if match:
 						try:
 							current = int(match.group("current"))
@@ -279,6 +325,12 @@ class FlashForge(object):
 			elif b"CMD M114 " in data:
 				# looks like get current position returns A: and B: for extruders?
 				data = data.replace(b" A:", b" E0:").replace(b" B:", b" E1:")
+				self._logger.debug("M114: {}".format(data))
+				match = regex_position.search(data)
+				if match:
+					for k in match.groupdict():
+						self._pos[k] = float(match[k])
+					self._logger.debug("pos: {}".format(self._pos))
 
 			elif b"CMD M119 " in data:
 				if b"MachineStatus: READY" in data:

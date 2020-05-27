@@ -191,8 +191,12 @@ class FlashForgePlugin(octoprint.plugin.SettingsPlugin,
 
 			#TODO: filter M146 and other commands? when printing from SD because they cause comms to hang
 
+			# try to convert relative positioning to absolute so add in some commands
+			if (gcode == "G91"):
+				cmd = [("G91", cmd_type), "M400", "M114"]
+
 			# M20 list SD card, M21 init SD card - do not do if we are busy, seems to cause issues
-			if (gcode == "M20" or gcode == "M21") and not self._serial_obj.is_ready():
+			elif (gcode == "M20" or gcode == "M21") and not self._serial_obj.is_ready():
 				cmd = []
 
 			# M25 = pause
@@ -237,6 +241,10 @@ class FlashForgePlugin(octoprint.plugin.SettingsPlugin,
 			# M400 in Marlin = wait for moves to finish : Flashforge = ? - instead send something inert so on_M400_sent is triggered in OctoPrint
 			elif gcode == "M400":
 				cmd = [("M119", "status_polling")]
+
+			# Tx = select extruder : FlashForge uses M108
+			elif gcode == "T":
+				cmd = [("M108 %s" % cmd, cmd_type)]
 
 		return cmd
 
