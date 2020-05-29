@@ -332,7 +332,6 @@ class FlashForge(object):
 			elif b"CMD M114 " in data:
 				# looks like get current position returns A: and B: for extruders?
 				data = data.replace(b" A:", b" E0:").replace(b" B:", b" E1:")
-				self._logger.debug("M114: {}".format(data))
 				match = regex_position.search(data)
 				if match:
 					for k, v in match.groupdict().items():

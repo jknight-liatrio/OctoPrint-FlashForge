@@ -190,7 +190,6 @@ class FlashForgePlugin(octoprint.plugin.SettingsPlugin,
 
 
 	def G91_disabled(self):
-		self._logger.debug("G91_disabled {}".format(self._printer_profile_manager.get_current_or_default()))
 		profile = self._printer_profile_manager.get_current_or_default()
 		return profile["noG91"]
 
