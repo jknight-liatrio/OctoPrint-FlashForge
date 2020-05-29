@@ -2,23 +2,23 @@
 
 Adds support to the [Octoprint](https://octoprint.org) 3D printer web interface for communication with closed source
 printers such as the:
-- FlashForge Finder, FlashForge Dreamer, FlashForge Dreamer NX, FlashForge Inventor, FlashForge Creator Max, FlashForge
+* FlashForge Finder, FlashForge Dreamer, FlashForge Dreamer NX, FlashForge Inventor, FlashForge Creator Max, FlashForge
 Ultra 2.0, FlashForge Guider II
-- PowerSpec Ultra 3DPrinter 2.0
-- Dremel Idea Builder 3D20
+* PowerSpec Ultra 3DPrinter 2.0
+* Dremel Idea Builder 3D20
 
 ## Current Capabilities
 
-- Automatically detect and connect to the above printers
-- Use Octoprint Control UI to:
-    - Set and monitor printer temperature
-    - Move extruder, bed
-    - Turn fans on and off
-    - Extrude, retract
-    - Set color of the enclosure light, turn it on/off
-- Upload a FlashPrint prepared .gx or .g file using the "Upload to SD" button which will immediately start a print
+* Automatically detect and connect to the above printers
+* Use Octoprint Control UI to:
+    * Set and monitor printer temperature
+    * Move extruder, bed
+    * Turn fans on and off
+    * Extrude, retract
+    * Set color of the enclosure light, turn it on/off
+* Upload a FlashPrint prepared .gx or .g file using the "Upload to SD" button which will immediately start a print
 (like FlashPrint), you should be able to pause, resume, cancel the print using the respective buttons.
-- Upload a Cura prepared .gcode file using the "Upload to SD" button or directly to the SD card from Cura (see
+* Upload a Cura prepared .gcode file using the "Upload to SD" button or directly to the SD card from Cura (see
 [Wiki](https://github.com/Mrnt/OctoPrint-FlashForge/wiki) for details).
 
 **PLEASE NOTE: At this time it will NOT print directly from within OctoPrint - i.e. using the "Upload" button to upload
