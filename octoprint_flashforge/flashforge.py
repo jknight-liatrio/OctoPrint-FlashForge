@@ -44,6 +44,7 @@ class FlashForge(object):
 
 	def __init__(self, plugin, comm, vendor_id, device_id, seriallog_handler=None, read_timeout=10.0, write_timeout=10.0):
 		import logging
+
 		self._logger = logging.getLogger("octoprint.plugins.flashforge")
 		self._logger.debug("FlashForge.__init__()")
 
@@ -55,8 +56,10 @@ class FlashForge(object):
 		self._readlock = threading.Lock()
 		self._writelock = threading.Lock()
 		self._printerstate = self.STATE_UNKNOWN
+
+		self._noG91 = False
 		self._relative_pos = False
-		self._pos = {"X": 0.0, "Y": 0.0, "Z": 0.0, "E": 0.0, "T0": 0.0, "T1": 0.0}
+		self._pos = {"X": 0.0, "Y": 0.0, "Z": 0.0, "E0": 0.0, "E1": 0.0}
 		self._extruder = "E0"
 
 		self._context = usb1.USBContext()
@@ -199,6 +202,10 @@ class FlashForge(object):
 		return self._printerstate in self.PRINTING_STATES
 
 
+	def disable_G91(self, disable):
+		self._noG91 = disable
+
+
 	def write(self, data):
 		"""Write commands to printer. OctoPrint Serial Factory method
 
@@ -224,31 +231,31 @@ class FlashForge(object):
 				payload = b"" if len(cmd) == 1 else cmd[1]
 				gcode = cmd[0]
 
-				if gcode == b"G1":
-					if self._relative_pos:
-						# try to convert relative positioning to absolute
-						self._logger.debug("G1 with rel pos")
-						match = regex_g1.search(data)
-						if match:
-							self._logger.debug("G1 {0}".format(match.groupdict()))
-							data = b"G1"
-							for k in match.groupdict():
-								if match[k] != None:
-									if k in ['X', 'Y', 'Z']:
-										v = self._pos[k] + float(match[k])
-										data += b" %s%06.4f" % (k.encode(), v)
-									elif k == 'E':
-										self._logger.debug("extruder {}, {}".format(self._extruder, self._pos[self._extruder]))
-										v = self._pos[self._extruder] + float(match[k])
-										data += b" %s%06.4f" % (k.encode(), v)
-									else:
-										v = int(match[k])
-										data += b" %s%d" % (k.encode(), v)
+				if gcode == b"G1" and self._noG91 and self._relative_pos:
+					# try to convert relative positioning to absolute
+					self._logger.debug("G1 with rel pos")
+					match = regex_g1.search(data)
+					if match:
+						self._logger.debug("G1 {0}".format(match.groupdict()))
+						data = b"G1"
+						for k, v in match.groupdict().items():
+							if v != None:
+								if k in ['X', 'Y', 'Z']:
+									v = self._pos[k] + float(v)
+									data += b" %s%06.4f" % (k.encode(), v)
+								elif k == 'E':
+									self._logger.debug("extruder {}, {}".format(self._extruder, self._pos[self._extruder]))
+									v = self._pos[self._extruder] + float(v)
+									data += b" %s%06.4f" % (k.encode(), v)
+								else:
+									v = int(v)
+									data += b" %s%d" % (k.encode(), v)
 				elif gcode == b"G90":
 					self._relative_pos = False
 				elif gcode == b"G91":
 					self._relative_pos = True
-					data = b"G90"
+					if self._noG91:
+						data = b"G90"
 				elif gcode == b"M108":
 					self._extruder = "E1" if b"T1" in payload else "E0"
 					self._logger.debug("select extruder {0}".format(self._extruder))
@@ -328,8 +335,9 @@ class FlashForge(object):
 				self._logger.debug("M114: {}".format(data))
 				match = regex_position.search(data)
 				if match:
-					for k in match.groupdict():
-						self._pos[k] = float(match[k])
+					for k, v in match.groupdict().items():
+						if v != None:
+							self._pos[k] = float(v)
 					self._logger.debug("pos: {}".format(self._pos))
 
 			elif b"CMD M119 " in data:

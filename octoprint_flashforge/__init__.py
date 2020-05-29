@@ -58,6 +58,13 @@ class FlashForgePlugin(octoprint.plugin.SettingsPlugin,
 
 	##~~ SettingsPlugin mixin
 	def get_settings_defaults(self):
+		# add default value for printer profiles
+		profiles = self._printer_profile_manager.get_all()
+		self._printer_profile_manager.default["noG91"] = False
+		for k, profile in profiles.items():
+			profile = dict_merge(self._printer_profile_manager.default, profile)
+			self._printer_profile_manager.save(profile, True)
+
 		# put your plugin's default settings here
 		return dict(
 			ledStatus=1,
@@ -182,6 +189,12 @@ class FlashForgePlugin(octoprint.plugin.SettingsPlugin,
 		return (gcode[0] in b"GM") and gcode not in [b"M117"]
 
 
+	def G91_disabled(self):
+		self._logger.debug("G91_disabled {}".format(self._printer_profile_manager.get_current_or_default()))
+		profile = self._printer_profile_manager.get_current_or_default()
+		return profile["noG91"]
+
+
 	# Called when gcode commands are being placed in the queue by OctoPrint:
 	# Mostly important for control panel or translating and printing non FlashPrint file directly from OctoPrint
 	def rewrite_gcode(self, comm_instance, phase, cmd, cmd_type, gcode, *args, **kwargs):
@@ -193,7 +206,11 @@ class FlashForgePlugin(octoprint.plugin.SettingsPlugin,
 
 			# try to convert relative positioning to absolute so add in some commands
 			if (gcode == "G91"):
-				cmd = [("G91", cmd_type), "M400", "M114"]
+				if self.G91_disabled():
+					self._serial_obj.disable_G91(True)
+					cmd = [("G91", cmd_type), "M400", "M114"]
+				else:
+					self._serial_obj.disable_G91(False)
 
 			# M20 list SD card, M21 init SD card - do not do if we are busy, seems to cause issues
 			elif (gcode == "M20" or gcode == "M21") and not self._serial_obj.is_ready():
