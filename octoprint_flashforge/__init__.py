@@ -207,7 +207,7 @@ class FlashForgePlugin(octoprint.plugin.SettingsPlugin,
 			if (gcode == "G91"):
 				if self.G91_disabled():
 					self._serial_obj.disable_G91(True)
-					cmd = [("G91", cmd_type), "M400", "M114"]
+					cmd = [("G91", cmd_type), "M114"]
 				else:
 					self._serial_obj.disable_G91(False)
 
