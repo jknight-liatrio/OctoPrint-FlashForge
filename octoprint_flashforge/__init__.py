@@ -7,6 +7,13 @@ from octoprint.settings import settings, default_settings
 from octoprint.util import dict_merge
 from . import flashforge
 
+'''
+Special case support:
+
+G91 (relative positioning) appears not to be supported by Finder 2, Guider 2 (F2G2). Made into printer profile option
+(noG91) so users can enable as appropriate. Flag is also used to special case other F2G2 issues such as:
+- F2G2 does not appear to support "G28 X Y"
+'''
 
 class FlashForgePlugin(octoprint.plugin.SettingsPlugin,
                        octoprint.plugin.AssetPlugin,
@@ -189,6 +196,7 @@ class FlashForgePlugin(octoprint.plugin.SettingsPlugin,
 		return (gcode[0] in b"GM") and gcode not in [b"M117"]
 
 
+	# Flag F2G2
 	def G91_disabled(self):
 		profile = self._printer_profile_manager.get_current_or_default()
 		return profile["noG91"]
@@ -203,13 +211,17 @@ class FlashForgePlugin(octoprint.plugin.SettingsPlugin,
 
 			#TODO: filter M146 and other commands? when printing from SD because they cause comms to hang
 
-			# try to convert relative positioning to absolute so add in some commands
+			# homing
 			if gcode == "G28":
+				cmd = cmd.replace('0', '')
 				if self.G91_disabled() and cmd == "G28 X Y":
+					# F2G2: does not support "G28 X Y"?
 					cmd = ["G28 X", "G28 Y"]
 
+			# relative positioning
 			elif gcode == "G91":
 				if self.G91_disabled():
+					# F2G2: try to convert relative positioning to absolute so add in some commands
 					self._serial_obj.disable_G91(True)
 					cmd = [("G91", cmd_type), "M114"]
 				else:
