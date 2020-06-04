@@ -204,7 +204,11 @@ class FlashForgePlugin(octoprint.plugin.SettingsPlugin,
 			#TODO: filter M146 and other commands? when printing from SD because they cause comms to hang
 
 			# try to convert relative positioning to absolute so add in some commands
-			if (gcode == "G91"):
+			if gcode == "G28":
+				if self.G91_disabled() and cmd == "G28 X Y":
+					cmd = ["G28 X", "G28 Y"]
+
+			elif gcode == "G91":
 				if self.G91_disabled():
 					self._serial_obj.disable_G91(True)
 					cmd = [("G91", cmd_type), "M114"]
