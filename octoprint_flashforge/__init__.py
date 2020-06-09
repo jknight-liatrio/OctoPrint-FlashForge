@@ -216,7 +216,8 @@ class FlashForgePlugin(octoprint.plugin.SettingsPlugin,
 				cmd = cmd.replace('0', '')
 				if self.G91_disabled() and cmd == "G28 X Y":
 					# F2G2: does not support "G28 X Y"?
-					cmd = ["G28 X", "G28 Y"]
+					# F2 needs first G28 to finish or it will ignore the second one
+					cmd = ["G28 X", "M400", "G28 Y"]
 
 			# relative positioning
 			elif gcode == "G91":
