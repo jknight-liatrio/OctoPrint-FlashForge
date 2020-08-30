@@ -55,10 +55,12 @@ class FlashForge(object):
 		self._comm = comm
 		self._read_timeout = read_timeout
 		self._write_timeout = write_timeout
+		self._status_time = 0.0
+		self._temp_time = 0.0
 		self._temp_interval = 0
 		self._M155_temp_interval = 0
 		self._autotemp = False
-		self._incoming = queue.Queue()
+		self._incoming = queue.Queue() # buffer for holding printer responses line by line
 		self._readlock = threading.Lock()
 		self._writelock = threading.Lock()
 		self._printerstate = self.STATE_UNKNOWN
@@ -185,7 +187,7 @@ class FlashForge(object):
 	def write_timeout(self):
 		"""Return timeout for writes. OctoPrint Serial Factory property"""
 
-		self._logger.debug("FlashForge.write_timeout()")
+		self._logger.debug("write_timeout()")
 		return self._write_timeout
 
 
@@ -214,25 +216,25 @@ class FlashForge(object):
 		printer waiting for heatup, etc otherwise OctoPrint will think the printer is not responding...
 		"""
 		exit_flag = threading.Event()
-		temp_time = 0.0
-		status_time = 0.0
+		self._status_time = 0.0
+		self._temp_time = 0.0
 		keep_alive = 0.5
 		self._logger.debug("keep_alive() set to:{}".format(keep_alive))
 		# do not queue commands if the connection is going away
 		while self._handle and not self._disconnect_event:
-			temp_time += keep_alive
-			if self._temp_interval and temp_time >= self._temp_interval:
+			self._temp_time += keep_alive
+			if self._temp_interval and self._temp_time >= self._temp_interval:
 				# do the fake auto reporting of temp OctoPrint
 				self._autotemp = True
 				self.write(b"M105")
-				temp_time = 0.0
-			status_time += keep_alive
-			if status_time >= 2.0:
+				self._temp_time = 0.0
+			self._status_time += keep_alive
+			if self._status_time >= 2.0:
 				# get status every 2s so printer gets something during long ops
 				# Dremel 3D20 seems to require something at least every 2s - other FF printers seem to be able to wait up to 3.5s
 				# may want to make this a setting
 				self.write(b"M119")
-				status_time = 0.0
+				self._status_time = 0.0
 			if exit_flag.wait(timeout=keep_alive):
 				exit()
 
@@ -273,7 +275,7 @@ class FlashForge(object):
 		Formats the commands sent by OctoPrint to make them FlashForge friendly.
 		"""
 
-		self._logger.debug("FlashForge.write() called by thread {}".format(threading.currentThread().getName()))
+		self._logger.debug("write() called by thread {}".format(threading.currentThread().getName()))
 		if not self._handle:
 			# do not queue commands if the connection is going away
 			return
@@ -334,6 +336,11 @@ class FlashForge(object):
 				self._relative_pos = True
 				if self._noG91:
 					data = b"G90"
+			elif gcode == b"M27":
+				# make sure we have the current printer status before getting SD card progress, because SD card
+				# progress reports printing when cancelled or finished...
+				data = b"M119\r\n~M27"
+				self._status_time = 0.0
 			elif gcode == b"M108":
 				self._extruder = "E1" if b"T1" in payload else "E0"
 				self._logger.debug("select extruder {0}".format(self._extruder))
@@ -378,15 +385,28 @@ class FlashForge(object):
 
 		self._readlock.acquire()
 
+		# return any line we have buffered
 		if not self._incoming.empty():
 			self._readlock.release()
 			return self._incoming.get_nowait()
 
+		# fetch some data
 		data = self.readraw()
-		#if not data.strip().endswith(b"ok") and len(data):
-		#	data += self.readraw()
+		# parse and buffer it
+		self._parse_data(data)
 
-		# translate returned data into something OctoPrint understands
+		self._logger.debug("readline() returning: {}".format(data.decode().replace('\r\n', ' | ')))
+		self._readlock.release()
+		# return the buffer
+		return self._incoming.get_nowait()
+
+
+	def _parse_data(self, data):
+		"""Parse raw data from printer into lines and buffer them
+
+		Manipulates printer response if necessary into something OctoPrint understands, breaks into lines and stores
+		in a buffer for readline() method.
+		"""
 		if len(data):
 			if b"CMD M27 " in data:
 				# need to filter out bogus SD print progress from cancelled or paused prints
@@ -399,6 +419,8 @@ class FlashForge(object):
 						except:
 							pass
 						else:
+							# Note: there is an issue with .gx files indicating the current byte size is greater than the
+							# total when the print is started
 							if self._printerstate == self.STATE_READY and current >= total:
 								# Ultra 3D: after completing print it still indicates SD card progress
 								data = b"CMD M27 Received.\r\nDone printing file\r\nok\r\n"
@@ -489,10 +511,6 @@ class FlashForge(object):
 		else:
 			self._incoming.put(data)
 
-		self._logger.debug("readline() returning: {}".format(data.decode().replace('\r\n', ' | ')))
-		self._readlock.release()
-		return self._incoming.get_nowait()
-
 
 	def readraw(self, timeout=-1):
 		"""
@@ -531,9 +549,16 @@ class FlashForge(object):
 
 		# read response, make sure we are getting the command we sent
 		gcode = b"CMD %s " % cmd.split(b" ", 1)[0]
-		response = b" "
-		while response and gcode not in response:
+		response = b""
+		while True:
 			response = self.readraw(timeout)
+			# TODO: if response is multiline and contains response to a previous command as well as this one then
+			#  we lose the previous command. We might need to parse each line and save old responses into the buffer
+			if not response or gcode in response:
+				break
+			# we got the response from some previous OctoPrint command so parse it into the buffer used for
+			# OctoPrint listener so it will be read later
+			self._parse_data(response)
 		if b"ok\r\n" in response:
 			self._logger.debug("sendcommand() got an ok")
 			return True, response

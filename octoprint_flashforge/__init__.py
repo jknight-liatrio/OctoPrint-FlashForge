@@ -215,7 +215,7 @@ class FlashForgePlugin(octoprint.plugin.SettingsPlugin,
 			#TODO: filter M146 and other commands? when printing from SD because they cause comms to hang
 
 			# allow a very limited set of commands while printing from SD to minimize problems...
-			if self._serial_obj.is_sd_printing() and gcode not in ["M24", "M25", "M26", "M27", "M105", "M112", "M114", "M117", "M400"]:
+			if self._serial_obj.is_sd_printing() and gcode not in ["M24", "M25", "M26", "M27", "M104", "M105", "M112", "M114", "M117", "M400"]:
 				cmd = []
 
 			# homing
@@ -224,7 +224,7 @@ class FlashForgePlugin(octoprint.plugin.SettingsPlugin,
 				if self.G91_disabled() and cmd == "G28 X Y":
 					# F2G2: does not support "G28 X Y"?
 					# F2 needs first G28 to finish or it will ignore the second one
-					cmd = ["G28 X", "M400", "G28 Y"]
+					cmd = ["G28 X", "G28 Y"]
 
 			# relative positioning
 			elif gcode == "G91":
@@ -240,10 +240,8 @@ class FlashForgePlugin(octoprint.plugin.SettingsPlugin,
 				cmd = []
 
 			# M25 = pause
-			elif gcode == "M25":
-				# pause during cancel causes issues
-				if comm_instance.isCancelling():
-					cmd = []
+			# there may be an issue on some printers issuing a pause before a cancel, however OctoPrint needs to think
+			# it sent the pause before it will generate a M26 (cancel)...
 
 			# M26 is sent by OctoPrint during SD prints:
 			# M26 in Marlin = set SD card position : FlashForge = cancel
