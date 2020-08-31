@@ -16,7 +16,7 @@ regex_gcode = re.compile(b"^(?P<gcode>[GM][0-9]+)")
 """
 Regex matching gcodes in write().
 """
-regex_g1 = re.compile(b"G1(?=.* X(?P<X>-?[0-9.]+))?(?=.* Y(?P<Y>-?[0-9.]+))?(?=.* Z(?P<Z>-?[0-9.]+))?(?=.* E(?P<E>-?[0-9.]+))?(?=.* F(?P<F>[0-9.]+))?")
+regex_g1 = re.compile(b"G[01](?=.* X(?P<X>-?[0-9.]+))?(?=.* Y(?P<Y>-?[0-9.]+))?(?=.* Z(?P<Z>-?[0-9.]+))?(?=.* E(?P<E>-?[0-9.]+))?(?=.* F(?P<F>[0-9.]+))?")
 """
 Regex matching move G1 commands for noG91 handling.
 """
@@ -311,12 +311,12 @@ class FlashForge(object):
 			payload = b"" if len(cmd) == 1 else cmd[1]
 			gcode = cmd[0]
 
-			if gcode == b"G1" and self._noG91 and self._relative_pos:
+			if gcode in [b"G0", b"G1"] and self._noG91 and self._relative_pos:
 				# try to convert relative positioning to absolute
-				self._logger.debug("G1 with rel pos")
+				self._logger.debug("G0/G1 with rel pos")
 				match = regex_g1.search(data)
 				if match:
-					self._logger.debug("G1 {0}".format(match.groupdict()))
+					self._logger.debug("G0/G1 {0}".format(match.groupdict()))
 					data = b"G1"
 					for k, v in match.groupdict().items():
 						if v != None:
