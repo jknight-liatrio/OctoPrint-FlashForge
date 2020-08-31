@@ -290,6 +290,10 @@ class FlashForgePlugin(octoprint.plugin.SettingsPlugin,
 			elif gcode == "M119":
 				cmd = []
 
+			# M132 = load saved offsets for home position : Finder v2 does not respond, causing connection to timeout
+			elif gcode == "M132":
+				cmd = []
+
 			# M146 = set LED colors: do not send while printing from SD (does not work, may cause issues)
 			elif gcode == "M146" and self._serial_obj.is_printing():
 				cmd = []

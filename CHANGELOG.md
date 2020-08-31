@@ -1,5 +1,9 @@
 # OctoPrint-FlashForge Changelog
 
+## 0.2.3 (2020-08-30)
+### Bug Fixes
+* Finder 2 should not drop connection when printing file directly (does not accept M132 command)
+
 ## 0.2.2 (2020-08-27)
 ### Bug Fixes
 * Dremel 3D20 should not drop connection (was timing out after 2s of nothing from host).
